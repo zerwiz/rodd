@@ -46,6 +46,7 @@ class FakeBrowserWindow {
 
 const fakeElectron = {
   app: {
+    setName: () => {},
     whenReady: () => Promise.resolve(),
     getPath: () => os.tmpdir(),
     on() {},

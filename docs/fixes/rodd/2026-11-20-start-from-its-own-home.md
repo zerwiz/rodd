@@ -25,3 +25,12 @@ lives in its own home, but step 0 of `start.sh` still demanded the pin's copy an
 A release of this change was built and flipped by Ymir's `bin/apps/apps.sh update rodd` (against a scratch apps
 home whose `origin/main` held this commit). `systemctl --user start ymir-rodd.service` then stayed active, and its
 journal ended with the window and toolbox lines.
+
+## The second fault behind the first
+
+Once `start.sh` ran, the window itself refused: `[rodd] UI SERVER FAILED … PIN_REFUSAL is not defined`, and the
+window read "Rödd — the UI server did not start". A gathered merge (7cc1394) had left a second refusal guard at the
+top of `app.whenReady()` in `src/main.js`, naming `PIN_REFUSAL` and `RODD_TREE`, which no longer exist. The guard
+is removed. The refusal is still said once, by the `PIN.error` check below it, so no behaviour is lost.
+`smoke/test-boot-path.mjs` gained the `app.setName` its fake Electron lacked, so the boot-path proof runs again
+(`node smoke/test-boot-path.mjs` → "every proof held").
