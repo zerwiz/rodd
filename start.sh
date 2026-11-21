@@ -46,6 +46,9 @@ say() { printf '%-44s %s\n' "$1" "$2"; }
 APP_TREE="$(dirname "$(dirname "$APP")")"
 IN_YMIR_TREE=0; [ -f "$APP_TREE/bin/voice/voice-door.sh" ] && IN_YMIR_TREE=1
 APP_LINK="${YMIR_APPS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/ymir-apps}/rodd/current"
+# In its own home the window has no pin of its own to hand over to: `--install-unit` is activate.sh's work (it
+# renders the same unit from electron/ymir-rodd.service.in, naming the apps home's `current` link).
+if [ "$IN_YMIR_TREE" = 0 ] && [ "${1:-}" = "--install-unit" ]; then exec bash "$APP/activate.sh"; fi
 if [ "${1:-}" != "--stop" ] && [ "${YMIR_RODD_TREE:-0}" != 1 ] && [ "$IN_YMIR_TREE" = 1 ]; then
   # shellcheck source=../../bin/pi/arm-pin-lib.sh
   . "$ROOT/bin/pi/arm-pin-lib.sh"
@@ -187,19 +190,29 @@ resolve_pin() {
   fi
   printf '%s' "$dir"
 }
-PIN="$(resolve_pin)"
-if [ -z "$PIN" ]; then
-  say "Rödd refuses to start" "no pinned runtime is named (YMIR_RUNTIME_DIR, or runtime.env in the home)"; exit 1
+# The split (2026-11-20): this pin check is for a window that still sits in Ymir's tree. A window in its OWN home
+# (a release exported from zerwiz/rodd) runs where it stands: its code is $APP, and the Ymir found above ($ROOT —
+# YMIR_RUNTIME_DIR, else the pin) serves only Ymir's doors (the voice door, the head, the toolbox, the desk). Asking
+# the pin for apps/rodd there refused every start since the pin stopped carrying it (Ymir PR #823).
+if [ "$IN_YMIR_TREE" = 1 ] && [ "${YMIR_RODD_TREE:-0}" != 1 ]; then
+  PIN="$(resolve_pin)"
+  if [ -z "$PIN" ]; then
+    say "Rödd refuses to start" "no pinned runtime is named (YMIR_RUNTIME_DIR, or runtime.env in the home)"; exit 1
+  fi
+  if [ ! -x "$PIN/apps/rodd/start.sh" ]; then
+    say "Rödd refuses to start" "the pin $PIN carries no apps/rodd — run bin/engine/runtime-deploy.sh"; exit 1
+  fi
+  if [ "$(cd "$PIN/apps/rodd" && pwd -P)" != "$(cd "$APP" && pwd -P)" ]; then
+    say "handing over to the pin" "$PIN/apps/rodd/start.sh"
+    YMIR_RUNTIME_DIR="$PIN" exec "$PIN/apps/rodd/start.sh" "$@"
+  fi
+  export YMIR_RUNTIME_DIR="$PIN"
+  say "code root (the pin)" "$PIN"
+else
+  export YMIR_RUNTIME_DIR="$ROOT"
+  say "code root (its own home)" "$APP"
+  say "Ymir's doors" "$ROOT"
 fi
-if [ ! -x "$PIN/apps/rodd/start.sh" ]; then
-  say "Rödd refuses to start" "the pin $PIN carries no apps/rodd — run bin/engine/runtime-deploy.sh"; exit 1
-fi
-if [ "$(cd "$PIN/apps/rodd" && pwd -P)" != "$(cd "$APP" && pwd -P)" ]; then
-  say "handing over to the pin" "$PIN/apps/rodd/start.sh"
-  YMIR_RUNTIME_DIR="$PIN" exec "$PIN/apps/rodd/start.sh" "$@"
-fi
-export YMIR_RUNTIME_DIR="$PIN"
-say "code root (the pin)" "$PIN"
 
 # 1 · clear every stray client — one seat, one client
 n=$(rodd_mains | wc -l)
